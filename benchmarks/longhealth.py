@@ -13,7 +13,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedModel, PreTrainedTokenizerBase, set_seed
 
 from utils.dataset import get_notes, load_longhealth_patients
-from utils.evaluation import generate_vllm, load_vllm
+from utils.generation import generate_vllm, load_vllm
 from utils.format import format_duration
 from utils.hub import list_files, load_tensors, save_result
 from utils.model import load_model, make_cartridge_cache

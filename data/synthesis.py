@@ -8,7 +8,7 @@ from simple_parsing import parse
 import torch
 
 from utils.dataset import get_notes, load_longhealth_patients
-from utils.evaluation import generate_vllm, load_vllm
+from utils.generation import generate_vllm, load_vllm
 from utils.format import format_duration
 from utils.hub import save_synthesis
 from utils.paths import make_synthesis_path
