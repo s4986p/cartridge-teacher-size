@@ -3,8 +3,11 @@ from statistics import mean, stdev
 
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 import matplotlib.pyplot as plt
 from matplotlib.ticker import PercentFormatter
+
+from utils.paths import SYNTHESIS_CASES
 
 MODEL_NAMES = {"Llama-3.2-3B-Instruct": "llama-3.2-3b-instruct", "Llama-3.1-8B-Instruct": "llama-3.1-8b-instruct"}
 METHOD_COLORS = {"base": "#a3a29b", "icl": "#1baf7a", "self": "#2a78d6", "cross": "#eb6834"}
@@ -17,6 +20,9 @@ MIN_FIGURE_WIDTH = 9.0
 # 정확도와 비율은 plot끼리 비교하기 쉽게 y축 고정, 막대 위 값이 잘리지 않게 여유를 둠
 ACCURACY_YMAX = 0.7
 RATIO_YMAX = 0.4
+# base, icl 뒤에 synthesis 설정마다 self, cross
+# 예시) ["base", "icl", "16384개\ncot 0.75", ...]
+CASES = ["base", "icl"] + [f"{num_samples}개\ncot {cot_ratio:g}" for num_samples, cot_ratio in SYNTHESIS_CASES]
 # 막대 위 값 글자 크기와 막대에서 띄우는 point 수
 VALUE_FONTSIZE = 8
 VALUE_OFFSET = 3
@@ -101,6 +107,24 @@ def plot_seed_bars(
     ax.set_xticks([case_index * case_width for case_index in range(len(cases))], cases)
     ax.set_xlim(-case_width / 2, (len(cases) - 0.5) * case_width)
     ax.yaxis.set_major_formatter(PercentFormatter(1, decimals=0))
+
+
+def plot_method_bars(
+    ax: Axes,
+    reference_values: dict[str, list[float]],
+    cartridge_values: dict[tuple[str, int, float], list[float] | None],
+) -> None:
+    # base, icl 막대 뒤에 synthesis 설정마다 self, cross 막대, 돌리지 않은 조합은 뺌
+    bars = [[(values, METHOD_COLORS[method])] for method, values in reference_values.items()]
+    for case in SYNTHESIS_CASES:
+        bars.append([(cartridge_values[method, *case], METHOD_COLORS[method]) for method in ["self", "cross"] if cartridge_values[method, *case] is not None])
+    plot_seed_bars(ax, CASES, bars)
+
+
+def add_method_legend(
+    fig: Figure,
+) -> None:
+    fig.legend(handles=[Patch(color=color, label=method) for method, color in METHOD_COLORS.items()], loc="outside lower center", ncol=len(METHOD_COLORS))
 
 
 def save_figure(

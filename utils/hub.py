@@ -68,3 +68,16 @@ def load_tensors(
     file_name: str,
 ) -> dict[str, Tensor]:
     return load_file(download_file(f"{hub_path}/{file_name}.safetensors"))
+
+
+def get_pending_targets(
+    experiment_name: str,
+    model_name: str,
+    file_name: str,
+) -> list[str]:
+    # base, icl과 hub에 있는 cartridge 중 experiment_name의 file_name 결과가 없는 것
+    # 예시) ["base/Llama-3.2-3B-Instruct", "cartridge/Llama-3.2-3B-Instruct/teacher=..."]
+    files = list_files()
+    targets = [f"base/{model_name}", f"icl/{model_name}"]
+    targets += sorted(str(Path(file).parent) for file in files if file.startswith(f"cartridge/{model_name}/") and file.endswith("/cartridge.safetensors"))
+    return [target for target in targets if f"{experiment_name}/{target}/{file_name}.json" not in files]

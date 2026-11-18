@@ -2,18 +2,15 @@ from dataclasses import dataclass
 import re
 from statistics import mean
 
-from matplotlib.patches import Patch
 import matplotlib.pyplot as plt
 from simple_parsing import parse
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from utils.hub import list_files, load_result
 from utils.model import MODEL_ORG
-from utils.paths import make_cartridge_path, make_result_name
-from utils.plot import ACCURACY_YMAX, METHOD_COLORS, RATIO_YMAX, get_figsize, get_panel_width, get_title, plot_seed_bars, save_figure
+from utils.paths import make_cartridge_paths, make_result_name
+from utils.plot import ACCURACY_YMAX, CASES, RATIO_YMAX, add_method_legend, get_figsize, get_panel_width, get_title, plot_method_bars, save_figure
 
-# (synthesis 수, cot 비율)
-SYNTHESIS_CASES = [(16384, 0.75), (16384, 0.2), (65536, 0.2)]
 # 반복: 끝에서 LOOP_TAIL_LEN번째부터 LOOP_PATTERN_LEN 글자가 그 앞에 MIN_LOOP_COUNT번 이상 나옴
 LOOP_TAIL_LEN = 200
 LOOP_PATTERN_LEN = 50
@@ -75,29 +72,21 @@ def main() -> None:
     files = list_files()
 
     reference_metrics = {method: get_metrics(f"{method}/{config.model_name}", files, tokenizer, config.max_generation_len, config.seeds) for method in ["base", "icl"]}
-    # self는 student 자신이 teacher, cross는 더 큰 teacher
-    cartridge_metrics = {}
-    for method, teacher_name in [("self", config.model_name), ("cross", config.teacher_name)]:
-        for num_samples, cot_ratio in SYNTHESIS_CASES:
-            target = make_cartridge_path(config.model_name, teacher_name, num_samples, cot_ratio, config.cartridge_len, config.learning_rate, config.batch_size, config.num_epochs, config.cartridge_seed)
-            cartridge_metrics[method, num_samples, cot_ratio] = get_metrics(target, files, tokenizer, config.max_generation_len, config.seeds)
+    cartridge_paths = make_cartridge_paths(config.model_name, config.teacher_name, config.cartridge_len, config.learning_rate, config.batch_size, config.num_epochs, config.cartridge_seed)
+    cartridge_metrics = {case: get_metrics(path, files, tokenizer, config.max_generation_len, config.seeds) for case, path in cartridge_paths.items()}
 
-    # base, icl 막대 뒤에 synthesis 설정마다 self, cross 막대, 돌리지 않은 조합은 뺌
-    cases = list(reference_metrics) + [f"{num_samples}개\ncot {cot_ratio:g}" for num_samples, cot_ratio in SYNTHESIS_CASES]
-    panel_names = list(reference_metrics["base"])
     # panel 4개를 2x2로 놓음
-    fig, axes = plt.subplots(PANEL_ROWS, len(panel_names) // PANEL_ROWS, figsize=get_figsize([get_panel_width(len(cases), 2)] * (len(panel_names) // PANEL_ROWS), PANEL_ROWS), layout="constrained")
+    panel_names = list(reference_metrics["base"])
+    fig, axes = plt.subplots(PANEL_ROWS, len(panel_names) // PANEL_ROWS, figsize=get_figsize([get_panel_width(len(CASES), 2)] * (len(panel_names) // PANEL_ROWS), PANEL_ROWS), layout="constrained")
     for ax, panel_name in zip(axes.flat, panel_names):
-        bars = [[(metrics[panel_name], METHOD_COLORS[method])] for method, metrics in reference_metrics.items()]
-        for case in SYNTHESIS_CASES:
-            bars.append([(cartridge_metrics[method, *case][panel_name], METHOD_COLORS[method]) for method in ["self", "cross"] if cartridge_metrics[method, *case] is not None])
-        plot_seed_bars(ax, cases, bars)
+        reference_values = {method: metrics[panel_name] for method, metrics in reference_metrics.items()}
+        cartridge_values = {case: None if metrics is None else metrics[panel_name] for case, metrics in cartridge_metrics.items()}
+        plot_method_bars(ax, reference_values, cartridge_values)
         ax.set_ylim(0, ACCURACY_YMAX if panel_name == "정확도" else RATIO_YMAX)
         ax.set_ylabel(panel_name)
 
     fig.suptitle(get_title(config.model_name, "teacher별 정확도"))
-    handles = [Patch(color=color, label=method) for method, color in METHOD_COLORS.items()]
-    fig.legend(handles=handles, loc="outside lower center", ncol=len(handles))
+    add_method_legend(fig)
     save_figure(fig, config.model_name, "longhealth_teacher_accuracy")
 
 

@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import math
-from pathlib import Path
 import re
 import time
 
@@ -12,17 +11,16 @@ from torch.nn.functional import pad
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedModel, PreTrainedTokenizerBase, set_seed
 
-from utils.dataset import get_notes, load_longhealth_patients
+from utils.dataset import load_longhealth_corpus, load_longhealth_questions
 from utils.generation import generate_vllm, load_vllm
 from utils.format import format_duration
-from utils.hub import list_files, load_tensors, save_result
+from utils.hub import get_pending_targets, load_tensors, save_result
 from utils.model import load_model, make_cartridge_cache
 from utils.paths import make_result_name
-from utils.prompts import CORPUS, LLAMA_USER_TURN, LONGHEALTH_QUESTION, PATIENT
+from utils.prompts import LLAMA_USER_TURN
 
-# icl은 환자 10명의 기록 전체가 prompt에 들어감
+# icl은 환자 10명의 기록 전체가 prompt에 들어가, vllm 최대 길이를 llama 최대 context 길이까지 늘림
 ICL_MAX_MODEL_LEN = 131072
-OPTION_LETTERS = "abcde"
 
 
 @dataclass
@@ -32,25 +30,6 @@ class Config:
     batch_size: int = 32
     max_generation_len: int = 1024
     seeds: tuple[int, ...] = (0, 1, 2)
-
-
-def load_longhealth_corpus() -> str:
-    records = []
-    for patient_id, patient in load_longhealth_patients():
-        notes = get_notes(patient)
-        records.append(PATIENT.format(patient_id=patient_id, num_notes=len(notes), notes="\n".join(notes), **patient))
-    return CORPUS.format(records="\n\n".join(records))
-
-
-def load_longhealth_questions() -> list[tuple[str, list[str], str]]:
-    # 문제마다 (question, 선택지, 정답)
-    problems = []
-    for patient_id, patient in load_longhealth_patients():
-        for row in patient["questions"]:
-            options = [row[f"answer_{letter}"] for letter in OPTION_LETTERS]
-            question = LONGHEALTH_QUESTION.format(patient_id=patient_id, question=row["question"], options="\n".join(options), **patient)
-            problems.append((question, options, row["correct"].strip().lower()))
-    return problems
 
 
 def parse_longhealth_prediction(
@@ -65,18 +44,6 @@ def parse_longhealth_prediction(
     prediction = match.group(1).strip().lower()
     similarities = [SequenceMatcher(None, prediction, option.strip().lower()).ratio() for option in options]
     return options[similarities.index(max(similarities))].strip().lower()
-
-
-def get_pending_targets(
-    model_name: str,
-    seed: int,
-) -> list[str]:
-    # base, icl과 hub에 있는 cartridge 중 이 seed의 결과가 없는 것
-    # 예시) ["base/Llama-3.2-3B-Instruct", "cartridge/Llama-3.2-3B-Instruct/teacher=..."]
-    files = list_files()
-    targets = [f"base/{model_name}", f"icl/{model_name}"]
-    targets += sorted(str(Path(file).parent) for file in files if file.startswith(f"cartridge/{model_name}/") and file.endswith("/cartridge.safetensors"))
-    return [target for target in targets if f"longhealth/{target}/{make_result_name(seed)}.json" not in files]
 
 
 @torch.no_grad()
@@ -124,8 +91,8 @@ def evaluate_responses(
 
 def main() -> None:
     config = parse(Config)
-    problems = load_longhealth_questions()
-    pending_targets = {seed: get_pending_targets(config.model_name, seed) for seed in config.seeds}
+    problems = load_longhealth_questions(use_cot=True)
+    pending_targets = {seed: get_pending_targets("longhealth", config.model_name, make_result_name(seed)) for seed in config.seeds}
     print("pending", pending_targets)
 
     # 1. icl은 기록 전체가 prompt에 들어가 길어서 vllm으로 따로 생성

@@ -188,3 +188,19 @@ You should first think step by step. Then give your final answer exactly as it a
 <answer>
 {{YOUR_ANSWER}}
 </answer>"""
+
+LONGHEALTH_NO_COT_QUESTION = """\
+Please answer the question below about the following patient: ID {patient_id}, Name: {name}, Birthday: {birthday}, Diagnosis: {diagnosis}
+
+<question>
+{question}
+</question>
+
+<options>
+{options}
+</options>
+Please provide your answer exactly as it appears in the options with the following format:
+
+<answer>
+{{YOUR_ANSWER}}
+</answer>"""
